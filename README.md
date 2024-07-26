@@ -1,0 +1,1 @@
+# metaculus-forecasting-bot
