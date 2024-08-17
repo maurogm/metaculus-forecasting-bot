@@ -20,6 +20,12 @@ class LoggerFactory:
         Directorio donde se debe guardar el archivo de logs. Si es None, no se loguea a disco.
     logs_file_name : Optional[str]
         Nombre del archivo de logs. Si es None, no se loguea a disco.
+        
+    Examples
+    --------
+    >>> logger_factory = LoggerFactory(log_level="DEBUG", log_to_console=True, logs_file_dir="logs", logs_file_name="tmp.log")
+    >>> logger = logger_factory.make_logger(name=__name__)
+    >>> logger.info("Este es un mensaje de información.")
     """
 
     log_level: str = "INFO"

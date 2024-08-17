@@ -3,6 +3,16 @@ from typing import Dict, Any, Optional
 
 @dataclass
 class CompletionResponse:
+    """
+    Dataclass that encapsulates the response from the OpenAI API.
+
+    This class provides properties to access different parts of the response.
+
+    Parameters
+    ----------
+    response_json : Dict[str, Any]
+        Dictionary containing the response from the OpenAI API.    
+    """
     response_json: Dict[str, Any]
 
     @property

@@ -4,6 +4,17 @@ from datetime import datetime
 
 @dataclass
 class QuestionDetails:
+    """
+    Dataclass that encapsulates the details of a question.
+
+    This class provides properties to access different parts of the question details.
+
+    Parameters
+    ----------
+    details_dict : Dict[str, Any]
+        Dictionary containing the details of the question.
+    """
+    
     details_dict: Dict[str, Any]
 
     def __post_init__(self):

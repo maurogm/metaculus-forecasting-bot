@@ -116,13 +116,6 @@ Step 3: **Extract Relevant Insights from the News articles**:
    - Does the path ahead appear to be clear or are there uncertainties?
    - Include any information that could shed light on the questions you asked yourself in Step 2.
 
-Step 3.5: **Validate if you are missing any critical information**:
-   - Based on what you have gathered so far, do you feel that you are missing any critical information?
-   - For example dates or reference values that are crucial for understanding the question itself.
-   - If so, YOU MUST PRINT THE FOLLOWING TEXTUAL: "Validation failed: Critical information missing."
-   - After that, you should continue to explain what information you are missing and how it would affect your forecast.
-
-
 Step 4: **Build yourself a timeline**:
    - Today is {today}.
    - What is the resolution date?
