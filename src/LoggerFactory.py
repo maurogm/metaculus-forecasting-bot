@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 @dataclass
-# TODO: Make singleton
 class LoggerFactory:
     """Factory para la creción de loggers.
 

@@ -1,7 +1,11 @@
 from asknews_sdk import AskNewsSDK
 from src.config import ASKNEWS_CLIENT_ID, ASKNEWS_CLIENT_SECRET, logger_factory
 
+from dataclasses import dataclass, field
+from typing import Optional, Any
+from logging import Logger
 
+@dataclass
 class AskNewsFetcher:
     """
     Class to handle the fetching of news articles from the AskNews API.
@@ -36,16 +40,15 @@ class AskNewsFetcher:
     >>> news_fetcher.fetch_articles()
 
     """
+    query: str
+    n_hot_articles: int = 10
+    n_historical_articles: int = 20
+    hot_response: Optional[Any] = None
+    historical_response: Optional[Any] = None
+    logger: Logger = field(init=False, default=None)
 
-    def __init__(self, query: str, n_hot_articles: int = 10, n_historical_articles: int = 20):
+    def __post_init__(self):
         self.logger = logger_factory.make_logger(name="NewsFetcher")
-
-        self.query: str = query
-        self.n_hot_articles: int = n_hot_articles
-        self.n_historical_articles: int = n_historical_articles
-
-        self.hot_response = None
-        self.historical_response = None
 
     def fetch_articles(self):
         ask = AskNewsSDK(

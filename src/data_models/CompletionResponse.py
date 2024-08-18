@@ -28,9 +28,9 @@ class CompletionResponse:
         return self.response_json.get('model')
 
     @property
-    def first_choice(self) -> Optional[str]:
+    def first_choice(self) -> Optional[Dict[str, Any]]:
         maybe_choices = self.response_json.get('choices')
-        if maybe_choices is not None:
+        if maybe_choices is not None and len(maybe_choices) > 0:
             return maybe_choices[0]
         else:
             return None
@@ -45,7 +45,7 @@ class CompletionResponse:
     @property
     def finish_reason(self) -> Optional[str]:
         try:
-            return self.response_json.get('finish_reason')
+            return self.first_choice.get('finish_reason')
         except:
             return None
 

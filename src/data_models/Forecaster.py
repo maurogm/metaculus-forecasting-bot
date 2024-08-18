@@ -1,7 +1,7 @@
 import json
 import datetime
 
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Any
 
 from src.config import OPENAI_MODEL, logger_factory
 
@@ -12,21 +12,48 @@ from src.data_models.CompletionResponse import CompletionResponse
 from src.openai_utils import get_gpt_prediction_via_proxy
 from src.utils import trim_beginning_of_string, try_to_find_and_eval_dict
 
+from dataclasses import dataclass, field
+from logging import Logger
 
+
+@dataclass
 class Forecaster:
     """
-    DOCSTRING
+    Class to handle the forecasting of questions.
+
+    This class provides methods to fetch, parse, and persist the forecast response.
+
+    Parameters
+    ----------
+    details_preparator : DetailsPreparation
+        Instance of DetailsPreparation containing the details of the questions to forecast.
+    news : Optional[AskNewsFetcher], optional
+        Instance of AskNewsFetcher containing the news context.
+    forecast_response : Optional[CompletionResponse], optional
+        Instance of CompletionResponse containing the forecast response.
+    forecast_dict : Optional[Dict[str, Any]], optional
+        Dictionary containing the parsed forecast response.
+    logger : Any, optional
+        Logger instance.
+
+    Examples
+    --------
+    >>> forecaster = Forecaster(details_preparator, news)
+    >>> forecaster.fetch_forecast_response()
+    >>> forecaster.parse_forecast_response()
+    >>> forecaster.persist_forecast()
     """
 
-    def __init__(self, details_preparator: DetailsPreparation, news = None):
-        self.logger = logger_factory.make_logger(name="Forecaster")
+    details_preparator: DetailsPreparation
+    news: Optional[AskNewsFetcher] = None
+    forecast_response: Optional[CompletionResponse] = None
+    forecast_dict: Optional[Dict[str, Any]] = None
+    logger: Logger = field(init=False, default=None)
 
-        self.details_preparator: DetailsPreparation = details_preparator
-        self.news: Optional[AskNewsFetcher] = news
-        self.forecast_response: CompletionResponse = None
-        self.forecast_dict = None
+    def __post_init__(self):
+        self.logger = logger_factory.make_logger(name="Forecaster")
     
-    def fetch_forecast_response(self):
+    def fetch_forecast_response(self) -> None:
         self.logger.debug(f"Fetching forecast response for question IDs {self.__q_ids_str}")
         if self.forecast_response is not None:
             self.logger.warning(
@@ -36,7 +63,7 @@ class Forecaster:
             self.forecast_response = get_gpt_prediction_via_proxy(
                 messages, model=OPENAI_MODEL)
 
-    def make_messages_for_forecast(self):
+    def make_messages_for_forecast(self) -> List[Dict[str, str]]:
         question_details_str = self.details_preparator.make_details_str()
         if self.news is None:
             messages = make_messages_for_forecaster(question_details_str)
@@ -55,6 +82,7 @@ class Forecaster:
             self.forecast_dict = {"forecasts": sanitized_forecasts, "summaries": sanitized_summaries}
         except:
             self.logger.error(f"Tried to evaluate this string failed:\n{trimmed_answer}\n")
+            raise ValueError("Failed to parse forecast response content.")
     
     def persist_forecast(self, path_to_dir: str = "logs/forecasts"):
         filename = f"{path_to_dir}/{self.__q_ids_str}.md"
