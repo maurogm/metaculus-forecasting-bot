@@ -119,6 +119,21 @@ The forecast should be the probability that the event described in the question 
 Format your answers as markdown text.
 """
 
+forecast_examples_str = """
+This probabilities should aknowledge the uncertainty of the future, but also relay heavily into historical data and trends. Here are a list of examples of how this aspects might come into play:
+####
+- "Will the sun rise tomorrow?" should have a probability of 100%.
+- "Will Canada continue to be a democracy in 2025?" should have a probability of 99%.
+- "Will a nuclear weapon be detonated next month?" should have a probability of 1%, since this has not happend since the end of WWII, and the consequences of such an event would be world-changing. 
+- "Will an AGI be created next month?" should have a probability of 0.1%, since this is a very hard problem whose very solution is speculation, and would also be world-changing.
+- "Will China invade Taiwan in the next year?" should have a probability of less than 4%, since despite this being a very complex geopolitical problem, they have been stable for decades, and such an action would have world-changing consequences.
+- "Which among X and Y will win the next Eurocup final?" should have a probability between 40% and 60%, since the two teams are probably evenly matched to be in the finals, and there is a lot of luck involved.
+- "Will X young and healthy person die in the next month?" should have a probability of less than 1%, since that happening in such a short time frame would be a great coincidence.
+- "Will the USA continue to have the largest GDP in the world in 2025?" should have a probability of 98%, since this has been the case for decades, and there is not enough time for someone else to surpass them.
+####
+Of course, these are baseline probabilities, and you should adjust them according to the specific context of the question. But don't move too much from the premise that the future is uncertain, that the past is the best predictor of the future, and that world-changing happen only VERY unfrequently.
+""" # NOTE: This is not being used in the current implementation.
+
 forecasting_chatgpt_instructions_str = f"""
 To create an accurate forecast, please follow these steps:
 
@@ -168,6 +183,9 @@ Step 7: **Define a baseline scenario**:
    - If by the resolution date nothing has changed from the present situation, how would the question resolve?
    - How drastical a change would have to happen in order to modify that? Consider current levels and trends (and seasonality, if applicable).
    - Does the time left until the resolution (as seen on step 4) seem enough for those changes to occur?
+   - Could such a change happen naturally, or would it take a rare triggering event? If so, has such a rare triggering event happened in the past? How frequently? Does the current context lead to think that the likelihood of the triggering event is substantialy modified, or is it better to keep yourself aligned with the historical base rate?
+   - If an event is dramatic and has few precedents, then the baseline should be extremely low: don't be afraid to assign a very low probability to such events. For example, sudden regime changes, unforseen and exceptional natural disasters, unexpected and sudden deaths of public figures in a short time period, the invasion of a country by another, the detonation of nuclear weapons, etc. are events that are extremely rare and should be assigned an extremely low probability (even as low as 1%) under normal circumstances.
+   - On the other hand, situations that are stable and have been stable for a long time, and that have a lot of precedents, should be assigned a high probability. For example, the sun rising tomorrow, the fact that the vast majority of people will not die in the next 24 hours, that stable democracies will continue to be so for the next couple of years, the USA having the largest GDP in the world, should all have extremely high probabilities.
 
 Step 8: **Make Predictions**:
    - Based on the analysis, make an initial prediction and write it down.
