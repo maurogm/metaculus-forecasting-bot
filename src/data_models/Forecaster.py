@@ -9,9 +9,6 @@ from src.data_models.DetailsPreparation import DetailsPreparation
 from src.data_models.AskNewsFetcher import AskNewsFetcher
 from src.data_models.CompletionResponse import CompletionResponse
 
-from src.openai_utils import get_gpt_prediction_via_proxy
-from src.utils import trim_beginning_of_string, try_to_find_and_eval_dict
-
 from dataclasses import dataclass, field
 from logging import Logger
 
@@ -60,65 +57,51 @@ class Forecaster:
 
     def __post_init__(self):
         self.logger = logger_factory.make_logger(name="Forecaster")
-    
+
     def fetch_forecast_response(self) -> None:
-        self.logger.debug(f"Fetching forecast response for question IDs {self.__q_ids_str}")
+        self.logger.debug(f"Fetching forecast response for question IDs {
+                          self.__q_ids_str}")
         if self.forecast_response is not None:
             self.logger.warning(
                 "Tried to fetch forecast response when it was already fetched.")
         else:
-            messages = self.make_messages_for_forecast()
-            self.forecast_response = get_gpt_prediction_via_proxy(
-                messages, model=OPENAI_MODEL)
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            input_dict = {"question_details": self.details_preparator.make_details_str(),
+                          "news_object": self.news,
+                          "today": today}
+            with get_openai_callback() as cb:
+                self.forecast_response = chain_forecast_full.invoke(input_dict)
+                self._cb_str = f"OpenAI Callback: \n{cb.__str__()}\n"
+                self.logger.info(self._cb_str)
 
-    def make_messages_for_forecast(self) -> List[Dict[str, str]]:
-        question_details_str = self.details_preparator.make_details_str()
-        if self.news is None:
-            messages = make_messages_for_forecaster(question_details_str)
-        else:
-            news_context_str = self.news.make_news_str()
-            messages = make_messages_for_forecaster(question_details_str, news_context_str)
-        return messages
-    
     def parse_forecast_response(self):
-        trimmed_answer = trim_beginning_of_string(self.forecast_response.content, "answer_dictionary")
+        json_output = self.forecast_response["json_output"]
         try:
-            parsed_dict = try_to_find_and_eval_dict(trimmed_answer)
             # Let's make sure that the types are as expected:
-            sanitized_forecasts = {int(k): float(v) for k, v in parsed_dict["forecasts"].items()}
-            sanitized_summaries = {int(k): v for k, v in parsed_dict["summaries"].items()}
-            self.forecast_dict = {"forecasts": sanitized_forecasts, "summaries": sanitized_summaries}
+            sanitized_forecasts = {int(k): float(v)
+                                   for k, v in json_output["forecasts"].items()}
+            sanitized_summaries = {
+                int(k): v for k, v in json_output["summaries"].items()}
+            self.forecast_dict = {
+                "forecasts": sanitized_forecasts, "summaries": sanitized_summaries}
         except:
-            self.logger.error(f"Tried to evaluate this string failed:\n{trimmed_answer}\n")
+            self.logger.error(f"Tried to evaluate this string failed:\n{
+                              json_output}\n")
             raise ValueError("Failed to parse forecast response content.")
-    
+
     def persist_forecast(self, path_to_dir: str = "logs/forecasts"):
         filename = f"{path_to_dir}/{self.__q_ids_str}.md"
-        
-        usage_str = f"#Usage:\n{self.forecast_response.tokens_all}"
-        input_str = f"#Input:\n{self.make_messages_for_forecast()}"
-        output_str = f"#Forecast response:\n{self.forecast_response.content}"
-
         with open(filename, "w") as f:
-            f.write(f"{usage_str}\n{input_str}\n{output_str}")
-    
+            f.write(f"{self._cb_str}")
+            for key, value in self.forecast_response.items():
+                f.write(
+                    f"\n---------- The followinig is the content of {key} ----------\n{value}")
+
     @property
     def __q_ids_str(self):
         q_ids = self.details_preparator.question_ids
         q_ids.sort()
         return "_".join([str(q_id) for q_id in q_ids])
-
-
-
-def make_messages_for_forecaster(question_str: str, news_str: Optional[str] = None):
-    system_message = f"{system_str}\n{forecasting_chatgpt_instructions_str}\n{answer_format_str}"
-    messages = [{"role": "system", "content": system_message}]
-    if news_str is not None:
-        messages.append({"role": "assistant", "content": news_str})
-    messages.append({"role": "user", "content": question_str})
-    return messages
-
-today = datetime.datetime.now().strftime("%Y-%m-%d")
 
 
 system_str = """
@@ -132,26 +115,13 @@ Your answers are concise and to the point.
 {question_details}
 """
 
-prompt_str_extract_key_details = """
-Step 1: **Extract Key Information from the Question Details**:
-   - Identify and list the key elements and variables from the question and background information.
-   - Note any important dates, events, or factors that may influence the outcome.
-   - If there are multiple questions, explicitly note if they are correlated in any way, such as being mutually exclusive.
-"""
-prompt_str_ask_questions = """
-Step 2: **Ask yourself questions**:
-   - If you feel that there are pieces of information that you are missing, ask yourself questions that will help you fill in the gaps.
-   - If there are events unfolding that could affect the outcome, ask yourself questions about those events.
-   - If thereare things still to come that could affect the outcome, ask yourself questions about those things.
-Provide your answer as a bullet list.
-"""
 prompt_str_extract_info_from_news = """
 Today is {today}.
 
 You are given the following pieces of news articles:
 {news_articles}
 
-Step 3: **Extract Relevant Insights from the News Articles**:
+## Extract Relevant Insights from the News Articles:
    - Be mindful of both quantitative and qualitative information.
    - When extracting information, consider the following questions, but also any other things that you deem relevant:
    - What's the current state of affairs?
@@ -164,24 +134,10 @@ Step 3: **Extract Relevant Insights from the News Articles**:
 
 Provide your answer as a bullet list of facts and insights that you extracted from your analysis.
 """
-prompt_str_build_timeline = """
 
-Step 4: Build Yourself a Timeline with every relevant event that you have identified. For example:
-   - Today is {today}.
-   - What is the resolution date?
-   - What significant events have happened in the past that might be related to the matter at hand?
-   - Are there any significant events expected to happen between now and the resolution that might have an impact?
-   - Add to your timeline anything that you deem relevant.
-
-You are provided the following report as a complementary data source:
-{news_insights}
-
-Provide your answer as a bullet list of times and events. Be concise. Include only dated events.
-"""
 prompt_str_preliminar_assessment = """
-
 You are provided the following report as a complementary data source:
-```markdown
+```
 {news_insights}
 ```
 
@@ -198,48 +154,6 @@ You are provided the following report as a complementary data source:
    - Decide if the present situation is in line with historical trends or if there are deviations.
 
 """
-prompt_str_baseline_scenario = """
-
-You are provided the following report assessing the current situation and some historical trends:
-```markdown
-{preliminar_assessment}
-```
-
-## Define a Baseline Scenario. Some topics that might help you settle on your baseline might include:
-   - Is there a baseline scenario? Or does this line of thinking not apply to this situation?
-   - What has happened in the past in similar situations?
-   - If by the resolution date nothing has changed from the present situation, how would the question resolve?
-   - How drastic a change would have to happen in order to modify that? Consider current levels and trends (and seasonality, if applicable).
-   - Does the time left until the resolution (as seen in Step 4) seem enough for those changes to occur?
-   - Could such a change happen naturally, or would it take a rare triggering event? If so, has such a rare triggering event happened in the past? How frequently? Does the current context lead you to think that the likelihood of the triggering event is substantially modified, or is it better to keep yourself aligned with the historical base rate?
-   - If an event is dramatic and has few precedents, then the baseline should be extremely low: don't be afraid to assign a very low probability to such events. For example, sudden regime changes, unforseen and exceptional natural disasters, unexpected and sudden deaths of public figures in a short time period, the invasion of a country by another, the detonation of nuclear weapons, etc. are events that are extremely rare and should be assigned an extremely low probability (even as low as 1%) under normal circumstances.
-   - On the other hand, situations that are stable and have been stable for a long time, and that have a lot of precedents, should be assigned a high probability. For example, the sun rising tomorrow, the fact that the vast majority of people will not die in the next 24 hours, that stable democracies will continue to be so for the next couple of years, the USA having the largest GDP in the world, should all have extremely high probabilities.
-
-
-Provide your baseline in a concise manner, as well as some reasoning behind it.
-You don't need to redundantly repeat the information that was already given to you, but you can refer to it.
-"""
-prompt_str_initial_predictions = """
-
-
-Step 8: **Make Predictions**:
-   - Based on the analysis, make an initial prediction.
-   - You must write it down with the "Initial forecast: [your prediction]".
-   - Consider the probability of different outcomes and articulate the reasoning behind your prediction.
-
-To give you a place to start from, an assistant provided you with the following baseline scenario:
-```
-{baseline_scenario}
-```
-
-Another assistant provided the following report assessing the current situation and some historical trends:
-```
-{preliminar_assessment}
-```
-
-For each question, provide your initial forecast as a single number between 0.01 and 0.99.
-"""
-
 
 prompt_str_baseline_and_prediction_scenario = """
 You are provided the following report assessing the current situation and some historical trends:
@@ -269,9 +183,7 @@ You don't need to redundantly repeat the information that was already given to y
 For each question, provide your initial forecast as a single number between 0.01 and 0.99.
 """
 
-
 prompt_str_check_predictions_implications = """
-
 You are provided the following report assessing the current situation and some historical trends:
 ```markdown
 {preliminar_assessment}
@@ -292,27 +204,7 @@ You have made an initial forecast:
          - Conversely, if your forecasted probability is lower than the historical frequency, assess whether current conditions are significantly more stable than in the past.
         3. Re-Evaluate: If your current probability estimate is much higher or lower than what historical data would suggest, re-examine your reasoning. Is there something unique about the current context that justifies this difference? Or does the historical baseline suggest you should adjust your probability closer to the historical average?
 """
-prompt_str_assess_uncertainty = """
 
-You are provided the following report assessing the current situation and some historical trends:
-```
-{preliminar_assessment}
-```
-
-
-A coleague has made the following prediction:
-```
-{initial_predictions}
-```
-
-You however wonder if that forecast is correctly taking into account the uncertainty of the situation.
-   - Identify potential sources of uncertainty or factors that could alter the forecast.
-   - Quantify the uncertainty where possible and explain how it affects the confidence in the prediction.
-
-Give your opinion on the uncertainty of the forecast and provide a concise explanation.
-If you agree with the forecast, just say so.
-But if you disagree, explain why, and say how you would adjust the forecast.
-"""
 prompt_str_review_and_refine = """
 Final Step: **Review and Refine**.
 You are in charge of making the final forecast.
@@ -344,6 +236,7 @@ It is very important to check the following points:
 
 Refine your prediction if necessary, to improve accuracy and clarity. Finally, write down your final forecast.
 """
+
 prompt_str_json_output = """
 The revised and final forecast is as follows:
 {final_forecast}
@@ -351,32 +244,27 @@ The revised and final forecast is as follows:
 {output_instructions}
 """
 
+
 def make_chat_prompt_template(prompt_str):
     return ChatPromptTemplate([("system", system_str), ("user", prompt_str)])
 
 
-prompt_template_extract_key_details = make_chat_prompt_template(prompt_str_extract_key_details)
-prompt_template_ask_questions = make_chat_prompt_template(prompt_str_ask_questions)
-prompt_template_extract_info_from_news = make_chat_prompt_template(prompt_str_extract_info_from_news)
-prompt_template_preliminar_assessment = make_chat_prompt_template(prompt_str_preliminar_assessment)
-prompt_template_baseline_scenario = make_chat_prompt_template(prompt_str_baseline_scenario)
-prompt_template_initial_predictions = make_chat_prompt_template(prompt_str_initial_predictions)
-prompt_template_baseline_and_prediction_scenario = make_chat_prompt_template(prompt_str_baseline_and_prediction_scenario)
-prompt_template_check_predictions_implications = make_chat_prompt_template(prompt_str_check_predictions_implications)
-prompt_template_assess_uncertainty = make_chat_prompt_template(prompt_str_assess_uncertainty)
-prompt_template_review_and_refine = make_chat_prompt_template(prompt_str_review_and_refine)
+prompt_template_extract_info_from_news = make_chat_prompt_template(
+    prompt_str_extract_info_from_news)
+prompt_template_preliminar_assessment = make_chat_prompt_template(
+    prompt_str_preliminar_assessment)
+prompt_template_baseline_and_prediction_scenario = make_chat_prompt_template(
+    prompt_str_baseline_and_prediction_scenario)
+prompt_template_check_predictions_implications = make_chat_prompt_template(
+    prompt_str_check_predictions_implications)
+prompt_template_review_and_refine = make_chat_prompt_template(
+    prompt_str_review_and_refine)
 prompt_template_json_output = make_chat_prompt_template(prompt_str_json_output)
 
 
-
-def extract_details_str(details_preparation: DetailsPreparation) -> str:
-    return details_preparation.make_details_str()
-
-
-chain_make_details_str = RunnableLambda(extract_details_str)
-chain_extract_key_details = prompt_template_extract_key_details | llm | StrOutputParser()
-chain_ask_questions = prompt_template_ask_questions | llm | StrOutputParser()
 chain_extract_info_from_news = prompt_template_extract_info_from_news | llm | StrOutputParser()
+
+
 def news_route_function(input):
     maybe_news = input.get("news_object")
     if maybe_news is not None and isinstance(maybe_news, AskNewsFetcher):
@@ -386,14 +274,12 @@ def news_route_function(input):
             RunnablePassthrough.assign(news_insights=chain_extract_info_from_news))
     else:
         return RunnablePassthrough.assign(news_insights=RunnableLambda(lambda x: "No news provided."))
+
+
 chain_news_route = RunnableLambda(news_route_function)
-# chain_build_timeline = prompt_template_build_timeline | llm | StrOutputParser()
 chain_preliminar_assessment = prompt_template_preliminar_assessment | llm | StrOutputParser()
-chain_baseline_scenario = prompt_template_baseline_scenario | llm | StrOutputParser()
-chain_initial_predictions = prompt_template_initial_predictions | llm | StrOutputParser()
 chain_baseline_and_prediction_scenario = prompt_template_baseline_and_prediction_scenario | llm | StrOutputParser()
 chain_check_predictions_implications = prompt_template_check_predictions_implications | llm | StrOutputParser()
-chain_assess_uncertainty = prompt_template_assess_uncertainty | llm | StrOutputParser()
 chain_review_and_refine = prompt_template_review_and_refine | llm | StrOutputParser()
 chain_json_output = prompt_template_json_output | llm | JsonOutputParser()
 
@@ -405,12 +291,12 @@ Your answer MUST consist of a JSON with the following format:
 }
 """
 
-chain_full = (
-    RunnablePassthrough.assign(output_instructions=RunnableLambda(lambda x: output_instructions)) |
+chain_forecast_full = (
     RunnablePassthrough.assign(news_insights=chain_news_route) |
     RunnablePassthrough.assign(preliminar_assessment=chain_preliminar_assessment) |
     RunnablePassthrough.assign(baseline_prediction=chain_baseline_and_prediction_scenario) |
     RunnablePassthrough.assign(check_predictions_implications=chain_check_predictions_implications) |
     RunnablePassthrough.assign(final_forecast=chain_review_and_refine) |
+    RunnablePassthrough.assign(output_instructions=RunnableLambda(lambda x: output_instructions)) |
     RunnablePassthrough.assign(json_output=chain_json_output)
 )
