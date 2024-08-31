@@ -1,10 +1,11 @@
 import json
 import requests
-from src.config import METACULUS_TOKEN, METACULUS_OPENAI_PROXY_URL
+from src.config import METACULUS_TOKEN, METACULUS_OPENAI_PROXY_URL, OPENAI_MODEL
 from src.data_models.CompletionResponse import CompletionResponse
+from langchain_openai import ChatOpenAI
 
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 def get_gpt_prediction_via_proxy(messages: List[Dict[str, str]], model: str = "gpt-4o") -> CompletionResponse:
@@ -62,3 +63,35 @@ def collapse_messages_into_string(messages: List[Dict[str, str]]) -> str:
     contents = [msg["content"] for msg in messages]
     return "\n".join(contents)
 
+
+def make_proxied_ChatOpenAI_LLM(model: Optional[str] = None, metaculus_token: Optional[str] = None, **kwargs) -> ChatOpenAI:
+    """
+    Create a ChatOpenAI object that uses the Metaculus proxy.
+
+    This function creates a langchain's ChatOpenAI object that uses the Metaculus proxy to make requests to the OpenAI API.
+
+    Args:
+        model (str): OpenAI model to be used. If None, the default model is read from the config.
+        metaculus_token (str): Metaculus API token. If None, the config variable METACULUS_TOKEN.
+    
+    Returns:
+        ChatOpenAI: ChatOpenAI object that uses the Metaculus proxy.
+    """
+
+    if model is None:
+        model = OPENAI_MODEL
+    if metaculus_token is None:
+        metaculus_token = METACULUS_TOKEN
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Token {METACULUS_TOKEN}"
+    }
+
+    return ChatOpenAI(
+        model=model,
+        api_key="Non empty string to avoid validation error",
+        base_url = "https://www.metaculus.com/proxy/openai/v1",
+        default_headers=headers,
+        **kwargs
+    )
