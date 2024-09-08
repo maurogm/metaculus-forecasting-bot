@@ -75,18 +75,21 @@ def get_question_details(question_id: int) -> QuestionDetails:
     return QuestionDetails(response_dict)
 
 
-def list_questions(tournament_id, offset=0, count=100):
+def list_questions(tournament_id=None, offset=0, count=100, status="open",
+                   order_by="-activity", forecast_type="binary") -> Dict:
     url_qparams = {
         "limit": count,
         "offset": offset,
         "has_group": "false",
-        "order_by": "-activity",
-        "forecast_type": "binary",
-        "project": tournament_id,
-        "status": "open",
+        "order_by": order_by,
+        "forecast_type": forecast_type,
         "type": "forecast",
         "include_description": "true",
     }
+    if tournament_id:
+        url_qparams["project"] = tournament_id
+    if status:
+        url_qparams["status"] = status
     url = f"{API_BASE_URL}/questions/"
     response = requests.get(url, **AUTH_HEADERS, params=url_qparams)
     response.raise_for_status()
@@ -101,7 +104,7 @@ def get_all_question_details_from_ids(question_ids: Iterable[int]) -> Dict[int, 
     return {q_id: get_question_details(q_id) for q_id in question_ids}
 
 
-def extract_ids_from_question_list(question_list: Iterable, drop_predicted = False) -> List[int]:
+def extract_ids_from_question_list(question_list: Iterable, drop_predicted=False) -> List[int]:
     """
     Given a list of questions, return a list of question ids.
 
@@ -120,6 +123,7 @@ def extract_questions(question_details_dict: Dict[int, QuestionDetails]) -> Dict
     questions_dict = {id: details.title
                       for id, details in question_details_dict.items()}
     return questions_dict
+
 
 def drop_answered_questions(question_list):
     """

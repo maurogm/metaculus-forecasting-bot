@@ -1,13 +1,15 @@
 import json
-import datetime
+from datetime import datetime, timezone, timedelta
 
 from typing import Dict, Iterable, List, Optional, Any
 
-from src.config import OPENAI_MODEL, logger_factory
+from src.config import OPENAI_MODEL, BOT_TOURNAMENT_IDS, logger_factory
+from src.metaculus import get_question_details
 
 from src.data_models.DetailsPreparation import DetailsPreparation
 from src.data_models.AskNewsFetcher import AskNewsFetcher
 from src.data_models.CompletionResponse import CompletionResponse
+from src.data_models.VectorStoreManager import VectorStoreManager
 
 from dataclasses import dataclass, field
 from logging import Logger
@@ -17,6 +19,8 @@ from src.openai_utils import make_proxied_ChatOpenAI_LLM
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_community.callbacks.manager import get_openai_callback
+from langchain_core.documents import Document
+
 
 llm = make_proxied_ChatOpenAI_LLM(temperature=0.1)
 
@@ -65,8 +69,9 @@ class Forecaster:
             self.logger.warning(
                 "Tried to fetch forecast response when it was already fetched.")
         else:
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            today = datetime.now().strftime("%Y-%m-%d")
             input_dict = {"question_details": self.details_preparator.make_details_str(),
+                          "question_title": self.details_preparator.unified_details.get("title"),
                           "news_object": self.news,
                           "today": today}
             with get_openai_callback() as cb:
@@ -171,9 +176,19 @@ You are provided the following report assessing the current situation and some h
    - If an event is dramatic and has few precedents, then the baseline should be extremely low: don't be afraid to assign a very low probability to such events. For example, sudden regime changes, unforseen and exceptional natural disasters, unexpected and sudden deaths of public figures in a short time period, the invasion of a country by another, the detonation of nuclear weapons, etc. are events that are extremely rare and should be assigned an extremely low probability (even as low as 1%) under normal circumstances.
    - On the other hand, situations that are stable and have been stable for a long time, and that have a lot of precedents, should be assigned a high probability. For example, the sun rising tomorrow, the fact that the vast majority of people will not die in the next 24 hours, that stable democracies will continue to be so for the next couple of years, the USA having the largest GDP in the world, should all have extremely high probabilities.
 
-
 Provide your baseline in a concise manner, as well as some reasoning behind it.
 You don't need to redundantly repeat the information that was already given to you, but you can refer to it.
+
+### Optional Reference: past forecasts
+To further aid you, you will be provided a list of forecasts that different experts have made in the past for similar questions, along with the median forecast for each one, and both the first and third quartiles (the first quartile means that 25% of the forecasters thought the probability was lower than that, and the third quartile means that 25% of the forecasters thought the probability was higher than that).
+This will give you a sense of the range of believable forecasts for each question.
+You should lean on this examples to use them as a reference point.
+- For example, if you are forecasting the probability that X person dies in the next year, and the you know that the median forecast for X dying in the next 10 YEARS is 0.3, then you should probably forecast a much lower probability than 0.3 for X dying in the next year, because the time frame is much shorter.
+- If you know that the probability of a war involving Germany is 0.05, then the probability of a war involving Europe should be higher than 0.05, because Europe is a larger set than just Germany.
+Here is the list of forecasts:
+```
+{related_forecasts}
+```
 
 ## **Make Predictions**:
    - Based on the analysis, make an initial prediction.
@@ -198,12 +213,49 @@ You have made an initial forecast:
     Reflect on your forecast and consider the broader historical context:
         1. Historical Baseline: How often has the event you are forecasting actually occurred in similar contexts in the past? Quantify this frequency if possible.
         2. What frequency is implied by your forecast?
-          - If time is a factor, consider how much time is left from today ({today}) until the resolution date.
+          - If time is a factor, consider how many days are left from today ({today}) until the resolution date.
         2. Consistency Check: Compare your current probability estimate with this historical baseline:
          - If your forecasted probability implies that the event should occur more frequently than it historically has, consider whether there is a clear and justifiable reason for this discrepancy.
          - Conversely, if your forecasted probability is lower than the historical frequency, assess whether current conditions are significantly more stable than in the past.
         3. Re-Evaluate: If your current probability estimate is much higher or lower than what historical data would suggest, re-examine your reasoning. Is there something unique about the current context that justifies this difference? Or does the historical baseline suggest you should adjust your probability closer to the historical average?
 """
+
+prompt_str_check_with_related_forecasts = """
+You are provided the following report assessing the current situation and some historical trends:
+```markdown
+{preliminar_assessment}
+```
+
+You have made an initial forecast:
+```
+{baseline_prediction}
+```
+
+You have a list of questions that your team has already made, along with the median forecast for each one, and both the first and third quartiles (the first quartile means that 25% of the forecasters thought the probability was lower than that, and the third quartile means that 25% of the forecasters thought the probability was higher than that).
+Here is the list of forecasts:
+```
+{related_forecasts}
+```
+
+
+## **Cross-Check Against Related Forecasts**
+You have a strong beleif in the accuracy of the forecasts of these other questions.
+There may be some questions on the list (or all of them) that are unrelated with the question you are trying to forecast now. In that case, you should ignore them.
+But for the questions that are related, your job is to check if your initial forecast is consistent with the forecasts of the related questions.
+- For example, if you are forecasting the probability that X person dies in the next year, and the you know that the median forecast for X dying in the next 10 YEARS is 0.3, then you should probably forecast a much lower probability than 0.3 for X dying in the next year, because the time frame is much shorter.
+- If you know that the probability of a war involving Germany is 0.05, then the probability of a war involving Europe should be higher than 0.05, because Europe is a larger set than just Germany.
+- If two questions ask about the same thing but for slightly different time frames, then the probabilities should not be too different (unless something impactful is expected to happen in the time lapse in which they differ).
+
+If there is any kind of inconsistency, you should explain why you think that is the case.
+If there is consistency, you should explain why you think that is the case, what is the number that you are using as a reference, and why you think that is a good reference.
+Some questions may not be directly related, but they may inform your forecast in some way. For example by providing a reference point for a similar event, or by showing that in a subject analogous to the one you are forecasting the consensus is that the probability is very likely/unlikely.
+    
+Provide your answer in up to 3 sections: one for **Signs of inconsistencies**, one for **Signs of consistency**, and one for **General insights**.
+The contents of each section should be a bullet list of facts and insights that you extracted from your analysis. Try to be concise, but also to provide enough information to justify your conclusions and recommendations.
+If you don't have any information for a section, you can ommit it.
+If you don't have any information at all (for example because the list of related forecasts is empty, or they are about completely unrelated topics), you should just say so.
+"""
+
 
 prompt_str_review_and_refine = """
 Final Step: **Review and Refine**.
@@ -224,11 +276,17 @@ Regarding that prediction, a colleague has checked it against historical frequen
 {check_predictions_implications}
 ```   
 
+While another colleague has checked it against other reliable predictions and made the following assessment:
+```
+{check_with_related_forecasts}
+```
+
 Review the initial forecast and ensure it aligns with the data and analysis.
   - Consider alternative scenarios or viewpoints that could lead to different outcomes from the baseline.
   - Identify potential sources of uncertainty or factors that could alter the forecast.
   - Quantify the uncertainty where possible and explain how it affects your confidence in the prediction.
   - Ponder your colleagues' assesment regarding the historical frequency of the event.
+  - Ponder your colleagues' assesment regarding the related forecasts.
 
 It is very important to check the following points:
   - If you are forecasting mutually exclusive events, ensure their probabilities sum to 1.
@@ -257,9 +315,38 @@ prompt_template_baseline_and_prediction_scenario = make_chat_prompt_template(
     prompt_str_baseline_and_prediction_scenario)
 prompt_template_check_predictions_implications = make_chat_prompt_template(
     prompt_str_check_predictions_implications)
+prompt_template_check_with_related_forecasts = make_chat_prompt_template(
+    prompt_str_check_with_related_forecasts)
 prompt_template_review_and_refine = make_chat_prompt_template(
     prompt_str_review_and_refine)
 prompt_template_json_output = make_chat_prompt_template(prompt_str_json_output)
+
+
+
+def filter_and_unify_question_details(documents: List[Document]) -> str:
+    # Extracts the question IDs from the documents' metadata
+    question_ids = [doc.metadata.get("question_id") for doc in documents]
+    # Gets the updated details from Metaculus
+    question_details_list = []
+    for qid in question_ids:
+        try:
+            question_details_list.append(get_question_details(qid))
+        except:
+            pass
+    # Filters out the questions that are part of the bot tournaments, since we want human forecasts
+    question_details_list = [qd for qd in question_details_list if all(
+        pid not in BOT_TOURNAMENT_IDS for pid in qd.project_ids)]
+    days_to_resolution = lambda qd: (qd.resolve_time - datetime.now(timezone.utc)).days
+    question_details_strings = [f"- The question **{qd.title}**, which resolves in {days_to_resolution(qd)} days, has the following community quartiles: {qd.community_quartiles}." for qd in question_details_list]
+    return "\n".join(question_details_strings)
+
+two_days_ago = datetime.now() - timedelta(days=2)
+retirever = VectorStoreManager().vector_store.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 15,
+                   "filter": {"close_timestamp": {"$gte": two_days_ago.timestamp()}}},
+)
+chain_documents_retirever = RunnableLambda(lambda x: x["question_title"]) | retirever | RunnableLambda(filter_and_unify_question_details)
 
 
 chain_extract_info_from_news = prompt_template_extract_info_from_news | llm | StrOutputParser()
@@ -280,6 +367,7 @@ chain_news_route = RunnableLambda(news_route_function)
 chain_preliminar_assessment = prompt_template_preliminar_assessment | llm | StrOutputParser()
 chain_baseline_and_prediction_scenario = prompt_template_baseline_and_prediction_scenario | llm | StrOutputParser()
 chain_check_predictions_implications = prompt_template_check_predictions_implications | llm | StrOutputParser()
+chain_check_with_related_forecasts = prompt_template_check_with_related_forecasts | llm | StrOutputParser()
 chain_review_and_refine = prompt_template_review_and_refine | llm | StrOutputParser()
 chain_json_output = prompt_template_json_output | llm | JsonOutputParser()
 
@@ -290,12 +378,14 @@ Your answer MUST consist of a JSON with the following format:
     "summaries": {{question_id: summary}} # summary should be a long paragraph highlighting the key points of your reasoning that led to the forecast
 }
 """
-
+prompt_template_check_with_related_forecasts
 chain_forecast_full = (
     RunnablePassthrough.assign(news_insights=chain_news_route) |
     RunnablePassthrough.assign(preliminar_assessment=chain_preliminar_assessment) |
+    RunnablePassthrough.assign(related_forecasts=chain_documents_retirever) |
     RunnablePassthrough.assign(baseline_prediction=chain_baseline_and_prediction_scenario) |
     RunnablePassthrough.assign(check_predictions_implications=chain_check_predictions_implications) |
+    RunnablePassthrough.assign(check_with_related_forecasts=chain_check_with_related_forecasts) |
     RunnablePassthrough.assign(final_forecast=chain_review_and_refine) |
     RunnablePassthrough.assign(output_instructions=RunnableLambda(lambda x: output_instructions)) |
     RunnablePassthrough.assign(json_output=chain_json_output)
