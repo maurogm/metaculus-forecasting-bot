@@ -240,20 +240,26 @@ Here is the list of forecasts:
 
 ## **Cross-Check Against Related Forecasts**
 You have a strong beleif in the accuracy of the forecasts of these other questions.
+
+### Step 1: Identify the questions that are related to the one you are forecasting.
 There may be some questions on the list (or all of them) that are unrelated with the question you are trying to forecast now. In that case, you should ignore them.
-But for the questions that are related, your job is to check if your initial forecast is consistent with the forecasts of the related questions.
+
+### Step 2: For the questions that are related, say what the quartiles imply for the quesiton que are forecasting.
 - For example, if you are forecasting the probability that X person dies in the next year, and the you know that the median forecast for X dying in the next 10 YEARS is 0.3, then you should probably forecast a much lower probability than 0.3 for X dying in the next year, because the time frame is much shorter.
 - If you know that the probability of a war involving Germany is 0.05, then the probability of a war involving Europe should be higher than 0.05, because Europe is a larger set than just Germany.
 - If two questions ask about the same thing but for slightly different time frames, then the probabilities should not be too different (unless something impactful is expected to happen in the time lapse in which they differ).
+- If two questions are the exact same, then the probabilities should be the same.
+Also state how strongly related are each of these implications.
 
 If there is any kind of inconsistency, you should explain why you think that is the case.
 If there is consistency, you should explain why you think that is the case, what is the number that you are using as a reference, and why you think that is a good reference.
 Some questions may not be directly related, but they may inform your forecast in some way. For example by providing a reference point for a similar event, or by showing that in a subject analogous to the one you are forecasting the consensus is that the probability is very likely/unlikely.
-    
-Provide your answer in up to 3 sections: one for **Signs of inconsistencies**, one for **Signs of consistency**, and one for **General insights**.
-The contents of each section should be a bullet list of facts and insights that you extracted from your analysis. Try to be concise, but also to provide enough information to justify your conclusions and recommendations.
-If you don't have any information for a section, you can ommit it.
-If you don't have any information at all (for example because the list of related forecasts is empty, or they are about completely unrelated topics), you should just say so.
+
+### Step 3: Synthesize the information into a final recommendation.
+Based on the reasoning in step 2, and the strength of the different implications, provide a final recommendation for your forecast so that it is alligned with the related forecasts.
+If you think that the initial forecast was underconfident or overconfident, you should explain why you think that is the case and how you think it should be re-calibrated it.
+If you are not certain enough to settle on a single number, but you settled on a range instead, say that.
+Make your case as clear as possible, since you have to convince another colleague to adopt your point of view.
 """
 
 
