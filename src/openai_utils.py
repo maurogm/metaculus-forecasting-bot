@@ -1,6 +1,6 @@
 import json
 import requests
-from src.config import METACULUS_TOKEN, METACULUS_OPENAI_PROXY_URL, OPENAI_MODEL
+from src.config import METACULUS_TOKEN, METACULUS_OPENAI_PROXY_URL, OPENAI_MODEL_SMART
 from src.data_models.CompletionResponse import CompletionResponse
 from langchain_openai import ChatOpenAI
 
@@ -79,7 +79,7 @@ def make_proxied_ChatOpenAI_LLM(model: Optional[str] = None, metaculus_token: Op
     """
 
     if model is None:
-        model = OPENAI_MODEL
+        model = OPENAI_MODEL_SMART
     if metaculus_token is None:
         metaculus_token = METACULUS_TOKEN
     

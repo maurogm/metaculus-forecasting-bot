@@ -3,10 +3,11 @@ from datetime import datetime, timezone, timedelta
 
 from typing import Dict, Iterable, List, Optional, Any
 
-from src.config import OPENAI_MODEL, BOT_TOURNAMENT_IDS, logger_factory
+from src.config import OPENAI_MODEL_SMART, BOT_TOURNAMENT_IDS, logger_factory, llm_smart
 from src.metaculus import get_question_details
 
 from src.data_models.DetailsPreparation import DetailsPreparation
+from src.data_models.HtmlContentProcessor import HtmlContentProcessor
 from src.data_models.AskNewsFetcher import AskNewsFetcher
 from src.data_models.CompletionResponse import CompletionResponse
 from src.data_models.VectorStoreManager import VectorStoreManager
@@ -15,14 +16,11 @@ from dataclasses import dataclass, field
 from logging import Logger
 
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSequence
-from src.openai_utils import make_proxied_ChatOpenAI_LLM
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_community.callbacks.manager import get_openai_callback
 from langchain_core.documents import Document
 
-
-llm = make_proxied_ChatOpenAI_LLM(temperature=0.1)
 
 
 @dataclass
@@ -55,6 +53,7 @@ class Forecaster:
 
     details_preparator: DetailsPreparation
     news: Optional[AskNewsFetcher] = None
+    scraped_context: Optional[HtmlContentProcessor] = None
     forecast_response: Optional[CompletionResponse] = None
     forecast_dict: Optional[Dict[str, Any]] = None
     logger: Logger = field(init=False, default=None)
@@ -70,9 +69,11 @@ class Forecaster:
                 "Tried to fetch forecast response when it was already fetched.")
         else:
             today = datetime.now().strftime("%Y-%m-%d")
+            scraped_information = "" if not self.scraped_context else self.scraped_context.collapse_responses_in_single_str()
             input_dict = {"question_details": self.details_preparator.make_details_str(),
                           "question_title": self.details_preparator.unified_details.get("title"),
                           "news_object": self.news,
+                          "scraped_information": scraped_information,
                           "today": today}
             with get_openai_callback() as cb:
                 self.forecast_response = chain_forecast_full.invoke(input_dict)
@@ -141,6 +142,11 @@ Provide your answer as a bullet list of facts and insights that you extracted fr
 """
 
 prompt_str_preliminar_assessment = """
+Tha following information was extracted from data sources provided in the question background:
+```
+{scraped_information}
+```
+
 You are provided the following report as a complementary data source:
 ```
 {news_insights}
@@ -355,7 +361,7 @@ retirever = VectorStoreManager().vector_store.as_retriever(
 chain_documents_retirever = RunnableLambda(lambda x: x["question_title"]) | retirever | RunnableLambda(filter_and_unify_question_details)
 
 
-chain_extract_info_from_news = prompt_template_extract_info_from_news | llm | StrOutputParser()
+chain_extract_info_from_news = prompt_template_extract_info_from_news | llm_smart | StrOutputParser()
 
 
 def news_route_function(input):
@@ -370,12 +376,12 @@ def news_route_function(input):
 
 
 chain_news_route = RunnableLambda(news_route_function)
-chain_preliminar_assessment = prompt_template_preliminar_assessment | llm | StrOutputParser()
-chain_baseline_and_prediction_scenario = prompt_template_baseline_and_prediction_scenario | llm | StrOutputParser()
-chain_check_predictions_implications = prompt_template_check_predictions_implications | llm | StrOutputParser()
-chain_check_with_related_forecasts = prompt_template_check_with_related_forecasts | llm | StrOutputParser()
-chain_review_and_refine = prompt_template_review_and_refine | llm | StrOutputParser()
-chain_json_output = prompt_template_json_output | llm | JsonOutputParser()
+chain_preliminar_assessment = prompt_template_preliminar_assessment | llm_smart | StrOutputParser()
+chain_baseline_and_prediction_scenario = prompt_template_baseline_and_prediction_scenario | llm_smart | StrOutputParser()
+chain_check_predictions_implications = prompt_template_check_predictions_implications | llm_smart | StrOutputParser()
+chain_check_with_related_forecasts = prompt_template_check_with_related_forecasts | llm_smart | StrOutputParser()
+chain_review_and_refine = prompt_template_review_and_refine | llm_smart | StrOutputParser()
+chain_json_output = prompt_template_json_output | llm_smart | JsonOutputParser()
 
 output_instructions = """
 Your answer MUST consist of a JSON with the following format:

@@ -14,7 +14,7 @@ if METACULUS_TOKEN is None:
     raise ValueError("The environment variable METACULUS_TOKEN is not set.")
 
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+OPENAI_MODEL_SMART = os.getenv("OPENAI_MODEL")
 LLM_TO_USE = os.getenv("LLM_TO_USE")
 LLM_MODEL_CONFIG = os.getenv("LLM_MODEL_CONFIG")
 TEXT_EMBEDDING_MODEL = "text-embedding-3-small" # TODO: Hacer ENV VAR
@@ -32,6 +32,9 @@ logger_factory = LoggerFactory(
     log_to_console=LOG_TO_CONSOLE,
     logs_file_dir=LOGS_FILE_DIR,
     logs_file_name=LOGS_FILE_NAME)
+
+from src.openai_utils import make_proxied_ChatOpenAI_LLM
+llm_smart = make_proxied_ChatOpenAI_LLM(temperature=0.1)
 
 
 AUTH_HEADERS = {"headers": {"Authorization": f"Token {METACULUS_TOKEN}"}}

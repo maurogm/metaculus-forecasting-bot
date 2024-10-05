@@ -1,6 +1,6 @@
 from typing import Dict, Iterable, List
 
-from src.config import OPENAI_MODEL, logger_factory
+from src.config import OPENAI_MODEL_SMART, logger_factory
 
 from src.data_models.CompletionResponse import CompletionResponse
 from src.data_models.QuestionDetails import QuestionDetails
@@ -63,7 +63,7 @@ class GroupSeparator:
             messages = make_messages_for_group_separator(
                 self.question_details_dict)
             self.grouping_response = get_gpt_prediction_via_proxy(
-                messages, model=OPENAI_MODEL)
+                messages, model=OPENAI_MODEL_SMART)
             try:
                 self.grouped_questions = try_to_find_and_eval_dict(
                     self.grouping_response.content)

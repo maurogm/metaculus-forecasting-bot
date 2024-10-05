@@ -2,7 +2,7 @@ import json
 
 from typing import Dict, Iterable, List
 
-from src.config import OPENAI_MODEL, logger_factory
+from src.config import OPENAI_MODEL_SMART, logger_factory
 
 from src.data_models.CompletionResponse import CompletionResponse
 from src.data_models.QuestionDetails import QuestionDetails
@@ -82,7 +82,7 @@ class DetailsPreparation:
             messages = make_messages_for_details_unification(
                 self.question_details_dict, self.question_ids)
             self.unification_response = get_gpt_prediction_via_proxy(
-                messages, model=OPENAI_MODEL)
+                messages, model=OPENAI_MODEL_SMART)
             try:
                 unified_details_dict = try_to_find_and_eval_dict(
                     self.unification_response.content)
